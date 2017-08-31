@@ -170,7 +170,7 @@ namespace RedBlueGames.MulliganRenamer
             GUI.color = oldColor;
 
             // Space gives us a bit of padding or else we're just too bunched up to the side
-            GUILayout.Space(4.0f);
+            GUILayout.Space(20.0f);
 
             if (GUILayout.Button("x", EditorStyles.miniButton, GUILayout.Width(16.0f)))
             {
@@ -528,21 +528,31 @@ namespace RedBlueGames.MulliganRenamer
 
         private void DrawPreviewPanel()
         {
-            EditorGUILayout.BeginVertical();
+            var rect = GUILayoutUtility.GetRect(this.position.width - 350, this.position.height - 80);
 
-            this.previewPanelScrollPosition = EditorGUILayout.BeginScrollView(this.previewPanelScrollPosition, this.guiStyles.PreviewScroll);
+            this.guiStyles.PreviewScroll.alignment = TextAnchor.MiddleLeft;
+            GUI.BeginGroup(rect, this.guiStyles.PreviewScroll);
+            this.previewPanelScrollPosition = GUI.BeginScrollView(rect, this.previewPanelScrollPosition, new Rect(0, 0, rect.width, 300 * 16)
+            );
+
+            for (int i = 0; i < 300; ++i)
+            {
+                GUI.Label(new Rect(0, i * 16.0f, rect.width, 16), "Test Label " + i);
+            }
 
             bool panelIsEmpty = this.ObjectsToRename.Count == 0;
             if (panelIsEmpty)
             {
-                this.DrawPreviewPanelContentsEmpty();
+                //this.DrawPreviewPanelContentsEmpty();
             }
             else
             {
-                this.DrawPreviewPanelContentsWithItems();
+                // this.DrawPreviewPanelContentsWithItems();
             }
 
-            EditorGUILayout.EndScrollView();
+            GUI.EndScrollView();
+            GUI.EndGroup();
+            return;
 
             // GetLastRect only works during Repaint, so we cache it off during Repaint and use the cached value.
             if (Event.current.type == EventType.Repaint)
@@ -588,7 +598,7 @@ namespace RedBlueGames.MulliganRenamer
             GUILayout.FlexibleSpace();
         }
 
-        private void DrawPreviewPanelContentsWithItems()
+        private void DrawPreviewPanelContentsWithItems(Rect scrollRect, List<UnityEngine.Object> visibleObjects)
         {
             var previewContents = PreviewPanelContents.CreatePreviewContentsForObjects(this.BulkRenamer, this.ObjectsToRename);
 
