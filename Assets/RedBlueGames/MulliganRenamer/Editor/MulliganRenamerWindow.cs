@@ -157,10 +157,16 @@ namespace RedBlueGames.MulliganRenamer
             return lastSelectedIndex;
         }
 
-        private static bool DrawPreviewRow(int previewStepIndex, PreviewRowModel info, PreviewRowStyle style)
+        private static bool DrawPreviewRow(Rect rowRect, int previewStepIndex, PreviewRowModel info, PreviewRowStyle style)
         {
             bool isDeleteClicked = false;
 
+            var originalName = previewStepIndex >= 0 && previewStepIndex < info.RenameResultSequence.NumSteps ? 
+                info.RenameResultSequence.GetOriginalNameAtStep(previewStepIndex, style.DeletionColor) : 
+                info.RenameResultSequence.OriginalName;
+            GUI.Label(rowRect, originalName, style.FirstColumnStyle);
+
+            /*
             var horizontalRect = EditorGUILayout.BeginHorizontal(GUILayout.Height(18.0f));
 
             var oldColor = GUI.color;
@@ -202,7 +208,7 @@ namespace RedBlueGames.MulliganRenamer
             GUILayout.FlexibleSpace();
 
             EditorGUILayout.EndHorizontal();
-
+            */
             return isDeleteClicked;
         }
 
@@ -333,6 +339,7 @@ namespace RedBlueGames.MulliganRenamer
             this.FocusForcedFocusControl();
 
             this.DrawPreviewPanel();
+
             EditorGUILayout.EndHorizontal();
 
             EditorGUILayout.Space();
@@ -527,35 +534,27 @@ namespace RedBlueGames.MulliganRenamer
 
         private void DrawPreviewPanel()
         {
-            var absoluteScrollRect = GUILayoutUtility.GetRect(this.position.width - 350, this.position.height - 80);
+            bool panelIsEmpty = this.ObjectsToRename.Count == 0;
+            float remainingFooterHeight = panelIsEmpty ? 80 : 120;
+            var absoluteScrollRect = GUILayoutUtility.GetRect(this.position.width - 350, this.position.height - remainingFooterHeight);
 
-            this.guiStyles.PreviewScroll.alignment = TextAnchor.MiddleLeft;
             GUI.BeginGroup(absoluteScrollRect, this.guiStyles.PreviewScroll);
+
             var relativeScrollRect = new Rect(absoluteScrollRect);
             relativeScrollRect.position = Vector2.zero;
+            var internalScrollArea = panelIsEmpty ? Rect.zero : new Rect(0, 0, absoluteScrollRect.width, 300 * 16);
             this.previewPanelScrollPosition = GUI.BeginScrollView(
                 relativeScrollRect,
                 this.previewPanelScrollPosition,
-                new Rect(0, 0, relativeScrollRect.width, 300 * 16));
+                internalScrollArea);
 
-//            for (int i = 0; i < 300; ++i)
-//            {
-//                GUI.Label(new Rect(0, i * 16.0f, scrollRect.width, 16), "Test Label " + i);
-//            }
-
-            bool panelIsEmpty = this.ObjectsToRename.Count == 0;
             if (panelIsEmpty)
             {
-                //EditorGUILayout.BeginVertical(this.guiStyles.PreviewScroll);
-                //this.DrawPreviewPanelContentsEmpty();
-                //EditorGUILayout.EndVertical();
+                this.DrawPreviewPanelContentsEmpty(relativeScrollRect);
             }
             else
             {
-                var index = (int)Mathf.Min((this.previewPanelScrollPosition.y / 16.0f), this.ObjectsToRename.Count - 1);
-                int numToGrab = Mathf.Min(30, this.ObjectsToRename.Count - index);
-                Debug.Log("Passing: " + index + ", " + numToGrab);
-                this.DrawPreviewPanelContentsWithItems(relativeScrollRect, this.ObjectsToRename.GetRange(index, numToGrab));
+                this.DrawPreviewPanelContentsWithItems(relativeScrollRect);
             }
 
             GUI.EndScrollView();
@@ -581,12 +580,27 @@ namespace RedBlueGames.MulliganRenamer
 
                 EditorGUILayout.EndHorizontal();
             }
-
-            EditorGUILayout.EndVertical();
         }
 
-        private void DrawPreviewPanelContentsEmpty()
+        private void DrawPreviewPanelContentsEmpty(Rect relativeRect)
         {
+            this.guiStyles.DropPrompt.wordWrap = true;
+
+            // TODO: DOESN WORK IN A TINY WINDOW, YET
+            float contentPadding = 50.0f;
+            var labelSize = Vector2.zero;
+            labelSize.x = relativeRect.width - contentPadding;
+            labelSize.y = this.guiStyles.DropPrompt.CalcHeight(new GUIContent(this.guiContents.DropPrompt), relativeRect.width);
+            var labelRect = new Rect(relativeRect.center - (labelSize * 0.5f), labelSize);
+            GUI.Label(labelRect, this.guiContents.DropPrompt, this.guiStyles.DropPrompt);
+
+            // TODO: MEASURE THE BUTTON TOO - FOR MULTI LANGUAGE SUPPORT
+            var buttonSize = new Vector2(150.0f, 16.0f);
+            var buttonPosition = new Vector2(relativeRect.center.x - buttonSize.x * 0.5f, labelRect.yMax);
+            var buttonRect = new Rect(buttonPosition, buttonSize);
+            this.DrawAddSelectedObjectsButton(buttonRect);
+
+            return;
             GUILayout.FlexibleSpace();
             EditorGUILayout.LabelField(this.guiContents.DropPrompt, this.guiStyles.DropPrompt);
 
@@ -599,11 +613,15 @@ namespace RedBlueGames.MulliganRenamer
             GUILayout.FlexibleSpace();
         }
 
-        private void DrawPreviewPanelContentsWithItems(Rect panelRect, List<UnityEngine.Object> visibleObjects)
+        private void DrawPreviewPanelContentsWithItems(Rect panelRect)
         {
-            var previewContents = PreviewPanelContents.CreatePreviewContentsForObjects(this.BulkRenamer, visibleObjects);
+            var headerHeight = 16.0f;
+            float elementHeight = 16.0f;
+            var index = (int)Mathf.Min((this.previewPanelScrollPosition.y / elementHeight), this.ObjectsToRename.Count - 1);
+            int numToGrab = Mathf.Min(30, this.ObjectsToRename.Count - index);
+            var visibleObjects = this.ObjectsToRename.GetRange(index, numToGrab);
 
-            var headerHeight = 18.0f;
+            var previewContents = PreviewPanelContents.CreatePreviewContentsForObjects(this.BulkRenamer, visibleObjects);
 
             // Space gives us a bit of padding or else we're just too bunched up to the side
             var paddingLeft = 42.0f;
@@ -612,35 +630,37 @@ namespace RedBlueGames.MulliganRenamer
             string originalNameColumnHeader = renameStep < 1 ? "Original" : "Before";
             string newNameColumnHeader = "After";
 
-            var firstColumnRect = new Rect(paddingLeft, 0, previewContents.LongestOriginalNameWidth, headerHeight);
+            var firstColumnRect = new Rect(paddingLeft, previewPanelScrollPosition.y, previewContents.LongestOriginalNameWidth, headerHeight);
             GUI.Label(firstColumnRect, originalNameColumnHeader, EditorStyles.boldLabel);
             //EditorGUILayout.LabelField(originalNameColumnHeader, EditorStyles.boldLabel, GUILayout.Width(previewContents.LongestOriginalNameWidth));
 
-            /*
+
             bool shouldShowSecondColumn = this.IsPreviewStepModePreference;
             if (shouldShowSecondColumn)
             {
-                EditorGUILayout.LabelField(newNameColumnHeader, EditorStyles.boldLabel, GUILayout.Width(previewContents.LongestNewNameWidth));
+                //EditorGUILayout.LabelField(newNameColumnHeader, EditorStyles.boldLabel, GUILayout.Width(previewContents.LongestNewNameWidth));
             }
+
 
             bool shouldShowThirdColumn = !this.IsShowingPreviewSteps || this.RenameOperationsToApply.Count > 1;
             if (shouldShowThirdColumn)
             {
-                EditorGUILayout.LabelField("Final Name", EditorStyles.boldLabel, GUILayout.Width(previewContents.LongestFinalNameWidth));
+                //EditorGUILayout.LabelField("Final Name", EditorStyles.boldLabel, GUILayout.Width(previewContents.LongestFinalNameWidth));
             }
 
-            GUILayout.FlexibleSpace();
+            //GUILayout.FlexibleSpace();
 
-            EditorGUILayout.EndHorizontal();
+            //EditorGUILayout.EndHorizontal();
 
-            this.DrawPreviewRows(renameStep, previewContents, shouldShowSecondColumn, shouldShowThirdColumn);
+            var rowsRect = new Rect(panelRect);
+            rowsRect.y = previewPanelScrollPosition.y + headerHeight;
+            this.DrawPreviewRows(rowsRect, renameStep, previewContents, shouldShowSecondColumn, shouldShowThirdColumn);
 
-            GUILayout.FlexibleSpace();
-            EditorGUILayout.LabelField(this.guiContents.DropPromptHint, this.guiStyles.DropPromptHint);
-            */
+            //GUILayout.FlexibleSpace();
+            //EditorGUILayout.LabelField(this.guiContents.DropPromptHint, this.guiStyles.DropPromptHint);
         }
 
-        private void DrawPreviewRows(int stepIndex, PreviewPanelContents previewContents, bool showSecondColumn, bool showThirdColumn)
+        private void DrawPreviewRows(Rect drawRect, int stepIndex, PreviewPanelContents previewContents, bool showSecondColumn, bool showThirdColumn)
         {
             for (int i = 0; i < previewContents.NumRows; ++i)
             {
@@ -670,12 +690,26 @@ namespace RedBlueGames.MulliganRenamer
                 previewRowStyle.InsertionColor = this.guiStyles.InsertionTextColor;
                 previewRowStyle.DeletionColor = this.guiStyles.DeletionTextColor;
 
-                if (DrawPreviewRow(stepIndex, content, previewRowStyle))
+                var rowHeight = 16.0f;
+                var rowRect = new Rect(0, drawRect.y + i * rowHeight, drawRect.width, rowHeight);
+                if (DrawPreviewRow(rowRect, stepIndex, content, previewRowStyle))
                 {
                     this.ObjectsToRename.Remove(this.ObjectsToRename[i]);
                     break;
                 }
             }
+        }
+
+        private void DrawAddSelectedObjectsButton(Rect rect)
+        {
+            var newlySelectedObjects = this.GetValidSelectedObjects();
+            EditorGUI.BeginDisabledGroup(newlySelectedObjects.Count == 0);
+            if (GUI.Button(rect, "Add Selected Objects"))
+            {
+                this.LoadSelectedObjects();
+            }
+
+            EditorGUI.EndDisabledGroup();
         }
 
         private void DrawAddSelectedObjectsButton()
@@ -1020,7 +1054,6 @@ namespace RedBlueGames.MulliganRenamer
             public static PreviewPanelContents CreatePreviewContentsForObjects(BulkRenamer renamer, List<UnityEngine.Object> objects)
             {
                 var preview = new PreviewPanelContents();
-
                 preview.PreviewRowInfos = new PreviewRowModel[objects.Count];
                 var objectNames = objects.GetNames();
                 var namePreviews = renamer.GetRenamePreviews(objectNames);
@@ -1036,18 +1069,17 @@ namespace RedBlueGames.MulliganRenamer
                     preview.PreviewRowInfos[i] = info;
                 }
 
-                float paddingScaleForBold = 1.11f;
                 preview.LongestOriginalNameWidth = 0.0f;
                 preview.LongestNewNameWidth = 0.0f;
                 foreach (var previewRowInfo in preview.PreviewRowInfos)
                 {
-                    float originalNameWidth = GUI.skin.label.CalcSize(new GUIContent(previewRowInfo.RenameResultSequence.OriginalName)).x * paddingScaleForBold;
+                    float originalNameWidth = EditorStyles.boldLabel.CalcSize(new GUIContent(previewRowInfo.RenameResultSequence.OriginalName)).x;
                     if (originalNameWidth > preview.LongestOriginalNameWidth)
                     {
                         preview.LongestOriginalNameWidth = originalNameWidth;
                     }
 
-                    float newNameWidth = GUI.skin.label.CalcSize(new GUIContent(previewRowInfo.RenameResultSequence.NewName)).x * paddingScaleForBold;
+                    float newNameWidth = EditorStyles.boldLabel.CalcSize(new GUIContent(previewRowInfo.RenameResultSequence.NewName)).x;
                     if (newNameWidth > preview.LongestNewNameWidth)
                     {
                         preview.LongestNewNameWidth = newNameWidth;
